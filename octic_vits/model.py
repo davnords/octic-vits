@@ -4,7 +4,7 @@ import torch
 # Maybe we will make one for dinov2 and one for deit iii (or maybe we can make one generic that just uses slightly different blocks)
 
 from octic_vits.d8_layers import (
-    LayerNormD8v2,
+    LayerNormD8,
     PatchEmbedD8,
     TritonGeluD8,
     AttentionD8,
@@ -15,8 +15,12 @@ from octic_vits.d8_layers import (
 
 from octic_vits.d8_utils import SQRT2_OVER_2
 from timm.layers import trunc_normal_
-from octic_vits.d8_utils import convert_8tuple_to_5tuple, isotypic_dim_interpolation, interpolate_spatial_tuple
+from octic_vits.d8_utils import convert_8tuple_to_5tuple, isotypic_dim_interpolation, interpolate_spatial_tuple, convert_5tuple_to_8tuple
 import torch.nn.functional as F
+from .d8_invariantization import PowerSpectrumInvariant
+# from .standard_vit_components import Block, Attention, Mlp
+from timm.models.vision_transformer import Block
+from functools import partial
 
 class OcticVisionTransformer(nn.Module):
     """ Octic Vision Transformer, modified from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
@@ -31,19 +35,16 @@ class OcticVisionTransformer(nn.Module):
         num_heads=12,
         mlp_ratio=4.,
         qkv_bias=False,
-        qk_scale=None,
         drop_rate=0.,
         attn_drop_rate=0.,
         drop_path_rate=0.,
-        norm_layer=LayerNormD8v2,
-        block_layers=Layer_scale_init_BlockD8,
+        octic_block_layers=BlockD8,
+        standard_block_layers=Block,
         Patch_layer=PatchEmbedD8,
-        act_layer=TritonGeluD8,
-        Attention_block=AttentionD8,
-        Mlp_block=MlpD8,
         init_scale=1e-4,
-        global_pool=True,
-        hybrid=True, # hybrid determines if octic equivariance is broken in the transition or not
+        num_register_tokens=0,
+        global_pool=False,
+        invariant=False,
         octic_equi_break_layer=None, # None for breaking in the middle. -1 for breaking at the end
         **kwargs):
         super().__init__()  
@@ -61,9 +62,16 @@ class OcticVisionTransformer(nn.Module):
             assert octic_equi_break_layer >= 0, "octic_equi_break_layer must be non-negative"
             assert octic_equi_break_layer < depth, "octic_equi_break_layer must be less than depth"
         self.octic_equi_break_layer = octic_equi_break_layer
-        self.hybrid = hybrid
+        self.invariant = invariant
+        self.num_register_tokens = num_register_tokens
+
+        if self.invariant:
+            self.invariantization = PowerSpectrumInvariant(embed_dim)
+            self.invariant_proj = torch.nn.Linear(self.invariantization.output_dim, embed_dim)
 
         self.patch_embed = Patch_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
+
+        norm_layer = partial(nn.LayerNorm, eps=1e-6)
 
         if not global_pool:
             # Class token if not using global pooling
@@ -79,31 +87,36 @@ class OcticVisionTransformer(nn.Module):
 
         dpr = [drop_path_rate for i in range(depth)]
         self.blocks = nn.ModuleList([
-            block_layers(
+            octic_block_layers(
                 dim=embed_dim,
                 num_heads=num_heads,
                 mlp_ratio=mlp_ratio,
                 qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop=0.0,
+                attn_drop=attn_drop_rate,
+                drop_path=dpr[i],
+                norm_layer=LayerNormD8,
+                act_layer=TritonGeluD8,
+                init_values=init_scale,
+            ) if i < self.octic_equi_break_layer else 
+            standard_block_layers(
+                dim=embed_dim,
+                num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
                 attn_drop=attn_drop_rate,
                 drop_path=dpr[i],
                 norm_layer=norm_layer,
-                act_layer=act_layer,
-                Attention_block=Attention_block,
-                Mlp_block=Mlp_block,
+                act_layer=nn.GELU,
                 init_values=init_scale,
             )
             for i in range(depth)])
         
         self.norm = norm_layer(embed_dim)
 
-        # self.feature_info = [
-        #     dict(num_chs=embed_dim, reduction=0, module='head')
-        # ]
-
-        # self.invariant = invariant(embed_dim)
-        # self.head = invariant_head_factory(self.invariant, embed_dim, num_classes, norm=global_pool)
+        self.head = (
+            nn.Linear(embed_dim, num_classes) 
+            if num_classes > 0 else nn.Identity()
+        )
 
         std = 8*.02 # Changed initialization from baseline that uses 0.02
         for p in self.pos_embed:
@@ -131,7 +144,7 @@ class OcticVisionTransformer(nn.Module):
         xs = self.patch_embed(x)
 
         pos_embed = convert_8tuple_to_5tuple(isotypic_dim_interpolation(self.pos_embed, dim=0))
-        pos_embed = interpolate_spatial_tuple(xs, pos_embed, H, W, self.patch_size)
+        pos_embed = interpolate_spatial_tuple(xs, pos_embed, H, W, self.patch_embed.patch_size)
         xs = tuple(x+v.flatten(0,1) for x,v in zip(xs, pos_embed))
 
         if not self.global_pool:    
@@ -139,22 +152,27 @@ class OcticVisionTransformer(nn.Module):
             cls_token = tuple(self.cls_token[i].expand(B, *self.cls_token[i].shape[1:]) for i in range(5))
             xs = tuple( torch.cat((cls_token[i], xs[i]), dim=1) for i in range(5))
                 
-        for i , blk in enumerate(self.blocks):
+        for blk in self.blocks[:self.octic_equi_break_layer]:
             xs = blk(xs)
-            
-        xs = self.norm(xs)
+        
+        if self.invariant: 
+            x = self.invariantization(xs)
+            x = self.invariant_proj(x)
+        else:
+            x = torch.cat(convert_5tuple_to_8tuple(xs), dim=-1)
+    
+        for blk in self.blocks[self.octic_equi_break_layer:]:
+            x = blk(x) 
+        x = self.norm(x)
 
         if self.global_pool:
             # Global average pooling
-            xs = tuple(x.mean(dim=1) for x in xs) # for no cls_token
+            x = x.mean(dim=1) # for no cls_token
         else:
             # Pluck out the class token for classification
-            xs = tuple(x[:, 0] for x in xs) 
-        
-        # Return the invariant features
-        x_invariant = self.invariant(xs)
-        # Use only the (global) class token for classification
-        return x_invariant
+            x = x[:, 0] 
+                
+        return x
 
     def forward(self, x):
 
@@ -169,3 +187,10 @@ class OcticVisionTransformer(nn.Module):
         x = self.head(x)
         
         return x
+    
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        base_names = ['pos_embed.0', 'pos_embed.1', 'pos_embed.2', 'pos_embed.3', 'pos_embed.4', 'pos_embed.5', 'cls_token.0',]
+        no_weight_decay_params = set(base_names + [f'_orig_mod.{name}' for name in base_names])
+        print('Ignoring weight decay for:', no_weight_decay_params)
+        return no_weight_decay_params

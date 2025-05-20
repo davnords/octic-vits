@@ -1,0 +1,5 @@
+student:
+  arch: hybrid_vit_large
+  block_chunks: 0 # Currently not using blocks
+train:
+  batch_size_per_gpu: 32

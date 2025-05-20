@@ -153,7 +153,7 @@ class AffineD8(nn.Module):
         )
 
 
-class LayerNormD8v2(nn.Module):
+class LayerNormD8(nn.Module):
     def __init__(self, channels, eps=1e-05, elementwise_affine=True, bias=True):
         super().__init__()
         self.scaling = AffineD8(channels, bias=bias) if elementwise_affine else nn.Identity()
@@ -490,7 +490,7 @@ class PatchEmbedD8(nn.Module):
             self.lift8.conv_E_right.weight.data,
         ]:
             torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))  # TODO: check this initialization
-
+from .d8_utils import convert_5tuple_to_8tuple, convert_8tuple_to_5tuple
 class IsotypicToPatchD8(nn.Module):
     def __init__(
         self, dim, patch_side, out_channels=3, bias=True, reshape_to_image=False,
@@ -517,7 +517,7 @@ class IsotypicToPatchD8(nn.Module):
         xs = tuple(
             0.25 * x_irrep.reshape(
                 B, L, self.patch_side//2, self.patch_side//2, self.out_channels)
-            for x_irrep in self.lin8(xs)
+            for x_irrep in convert_5tuple_to_8tuple(self.lin8(xs))
         )
 
         out_A1 = torch.cat((
@@ -668,7 +668,7 @@ class Layer_scale_init_BlockD8(nn.Module):
                  drop=0.,
                  drop_path=0.,
                  act_layer=TritonGeluD8,
-                 norm_layer=LayerNormD8v2,
+                 norm_layer=LayerNormD8,
                  Attention_block=AttentionD8,
                  Mlp_block=MlpD8,
                  init_values=1e-4,
@@ -719,7 +719,7 @@ class BlockD8(nn.Module):
         init_values=None,
         drop_path: float = 0.0,
         act_layer: Callable[..., nn.Module] = TritonGeluD8,
-        norm_layer: Callable[..., nn.Module] = LayerNormD8v2,
+        norm_layer: Callable[..., nn.Module] = LayerNormD8,
         attn_class: Callable[..., nn.Module] = AttentionD8,
         ffn_layer: Callable[..., nn.Module] = MlpD8,
     ) -> None:
