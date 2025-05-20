@@ -11,15 +11,15 @@
     <a href="https://scholar.google.com/citations?user=FUE3Wd0AAAAJ">Georg Bökman</a>
   </p>
   <h2 align="center"><p>
-    <a align="center">Paper (coming soon)</a> | 
+    <a align="center">Paper</a>
   </p></h2>
   <div align="center"></div>
 </p>
 <br/>
 <p align="center">
-    <img src="./assets/octo.png" alt="example" height="500">
+    <img src="./assets/figure_1.png" alt="example" height="400">
     <br>
-    <em>Octo challenges the other animals on the block!</em>
+    Using octic layers in ViTs significantly reduces the computational complexity while maintaining or improving classification accuracy on ImageNet-1K, for both supervised and self-supervised training.
 </p>
 
 ## Structure
