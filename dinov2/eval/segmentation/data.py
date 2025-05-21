@@ -255,8 +255,7 @@ def make_dataset(
     if parsed.scheme == "custom":
         print(f"Using custom dataset: {parsed.netloc}")
         if "root" not in kwargs:
-            cache_dir = Path("/mimer/NOBACKUP/groups/snic2022-6-266/davnords/octo/data")
-            # cache_dir = Path(torch.hub.get_dir()).parent
+            cache_dir = Path(torch.hub.get_dir()).parent
             kwargs["root"] = (cache_dir / "custom_datasets" / parsed.netloc).resolve().as_posix()
         return custom_datasets[parsed.netloc](transform=transform, target_transform=target_transform, **kwargs)
     if parsed.scheme == "hf":

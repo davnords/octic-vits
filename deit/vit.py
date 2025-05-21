@@ -522,8 +522,7 @@ def deit_large_patch16_LS(pretrained=False,
         block_layers=Layer_scale_init_Block,
         **kwargs)
     if pretrained:
-        checkpoint = torch.load('/mimer/NOBACKUP/groups/snic2022-6-266/davnords/octo/pretrained_models/deit_3_large_224_1k.pth', map_location='cpu')
-        model.load_state_dict(checkpoint["model"])
+        raise NotImplementedError('Pretrained weights not available for deit_large_patch16_LS')
     return model
     
 @register_model
@@ -543,8 +542,7 @@ def deit_huge_patch14_LS(pretrained=False,
         block_layers = Layer_scale_init_Block,
         **kwargs)
     if pretrained:
-        checkpoint = torch.load('/mimer/NOBACKUP/groups/snic2022-6-266/davnords/octo/pretrained_models/deit_3_huge_224_1k.pth', map_location='cpu')
-        model.load_state_dict(checkpoint["model"])
+        raise NotImplementedError('Pretrained weights not available for deit_huge_patch14_LS')
     return model
 
 @register_model
