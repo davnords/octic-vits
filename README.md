@@ -17,7 +17,7 @@
 </p>
 <br/>
 <p align="center">
-    <img src="./assets/figure_1.png" alt="example" height="300">
+    <img src="./assets/figure_1.png" alt="example" height="200">
     <!-- <br>
     Using octic layers in ViTs significantly reduces the computational complexity while maintaining or improving classification accuracy on ImageNet-1K, for both supervised and self-supervised training. -->
 </p>
