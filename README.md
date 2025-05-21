@@ -11,7 +11,7 @@
     <a href="https://scholar.google.com/citations?user=FUE3Wd0AAAAJ">Georg Bökman</a>
   </p>
   <h2 align="center"><p>
-    <a align="center">Paper</a>
+    <a align="center">Paper (coming soon)</a>
   </p></h2>
   <div align="center"></div>
 </p>
