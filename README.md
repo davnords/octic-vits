@@ -36,10 +36,10 @@ model = OcticVisionTransformer(embed_dim=1280, depth=32, num_heads=16)
 This will default to a hybrid model with the first half of its block being octic and the remaining standard (i.e. this model will have approx. 40% less FLOPs than a regular ViT-H). To instead obtain an invariant model, simply set `invariant=True`. You can further decide on the number of octic blocks `k` by setting `octic_equi_break_layer=k`.
 
 ### DeiT III
-Code based on the official [repo](https://github.com/facebookresearch/deit) has been placed in the [`deit`](deit) folder.
+Code based on the official [repo](https://github.com/facebookresearch/deit) has been placed in the [deit](deit) folder.
 
 ### DINOv2 
-Code based on the official [repo](https://github.com/facebookresearch/dinov2) has been placed in the [`dinov2`](dinov2) folder.
+Code based on the official [repo](https://github.com/facebookresearch/dinov2) has been placed in the [dinov2](dinov2) folder.
 
 ## Reproducing Results
 Code to reproduce the experiments can be found in the [experiments folder](experiments). Below follows general instruction on how to run it and how to obtain pretrained model weights.
@@ -50,7 +50,7 @@ All the code is written with the intent to be run on a [Slurm](https://slurm.sch
 ### Environment
 For DINOv2 we use the same environment as in the original [repo](https://github.com/facebookresearch/dinov2) and same goes for [deit](https://github.com/facebookresearch/deit). Additional miscellaneous installations, e.g. [submitit](https://github.com/facebookincubator/submitit), need to be additionally downloaded.   
 
-Since DeiT III is deprecated we provide some additional guidance on its installation in [`DEIT_ENV.md`](DEIT_ENV.md)
+Since DeiT III is deprecated we provide some additional guidance on its installation in [DEIT_ENV.md](DEIT_ENV.md)
 
 ### Data
 
