@@ -2,8 +2,13 @@ import dinov2.eval.linear as training
 from trainer import Trainer
 from submit import get_args_parser, submit_jobs
 import sys
+import os
+import constants
 
 # example command: python experiments/eval_dinov2.py <path_to_training> 12499
+
+os.environ["IMAGENET_PATH"] = constants.IMAGENET_PATH
+os.environ["EXTRA_PATH"] = constants.EXTRA_PATH
 
 def main():
     for eval in ['linear', 'knn']:
@@ -22,8 +27,8 @@ def main():
         args.training_module = training.__name__
 
         args.timeout = 150      
-        args.output_dir = args.dir + f"/eval/training_{args.ckpt_iter}/{eval}"
-        print(f"Submitted {eval} evaluation for iteration {args.ckpt_iter} to {args.output_dir}")
+        args.output_dir = args.dir + f"/{eval}"
+        print(f"Submitted {eval} evaluation for iteration to {args.output_dir}")
 
         submit_jobs(Trainer, args, name='dinov2_eval')
     return 0

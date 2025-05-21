@@ -8,8 +8,7 @@ from typing import Literal
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
-from dinov2.models.vision_transformer import dinov2_vitl16, dinov2_hybrid_vitl16, dinov2_vitl16_inv_early, dinov2_vith16, dinov2_vith16_inv_early, dinov2_hybrid_vith16, dinov2_d8_vitl16
-from d8_components.d8_utils import convert_5tuple_to_8tuple
+from dinov2.models.vision_transformer import *
 
 def custom_fwd(
         self,
@@ -52,20 +51,22 @@ def custom_fwd_d8(
     return class_tokens, registers, out 
 
 model_dict = {
-    "dinov2_vitl16": (dinov2_vitl16, custom_fwd),
-    "dinov2_hybrid_vitl16": (dinov2_hybrid_vitl16, custom_fwd),
-    "dinov2_vitl16_inv_early": (dinov2_vitl16_inv_early, custom_fwd),
-    "dinov2_vith16": (dinov2_vith16, custom_fwd),
-    "dinov2_vith16_inv_early": (dinov2_vith16_inv_early, custom_fwd),
-    "dinov2_hybrid_vith16": (dinov2_hybrid_vith16, custom_fwd),
-
-    "dinov2_d8_vitl16": (dinov2_d8_vitl16, custom_fwd_d8),
+    "dinov2_vitl16": (vit_large, custom_fwd),
+    "dinov2_hybrid_vitl16": (hybrid_vit_large, custom_fwd),
+    "dinov2_vitl16_inv_early": (vit_large_inv_early, custom_fwd),
+    "dinov2_vith16": (vit_huge, custom_fwd),
+    "dinov2_vith16_inv_early": (vit_huge_inv_early, custom_fwd),
+    "dinov2_hybrid_vith16": (hybrid_vit_huge, custom_fwd),
 }
 
-def __model_loader__(model_name: str, device: str = "cuda") -> nn.Module:
+def __model_loader__(model_name: str, weights:str, device: str = "cuda") -> nn.Module:
 
     model_func, custom_fwd_func = model_dict[model_name]
-    model: nn.Module = model_func(pretrained=True)
+    model: nn.Module = model_func()
+    checkpoint = torch.load(weights, map_location="cpu", weights_only=False)
+    msg = model.load_state_dict(checkpoint["teacher"], strict=False)
+    print(msg)
+
     model.forward = MethodType(custom_fwd_func, model)
     model.eval()
     model.to(device=device)

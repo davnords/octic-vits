@@ -44,7 +44,7 @@ def get_args_parser(
         add_help=add_help,
     )
     parser.add_argument('dir', type=str, help='Path to training folder')
-    parser.add_argument('ckpt_iter', type=int, help='The iteration of the checkpoint to load')
+
     parser.add_argument(
         "--train-dataset",
         dest="train_dataset_str",
@@ -595,12 +595,6 @@ def run_eval_linear(
 
 
 def main(args):
-    ckpt_iter = args.ckpt_iter
-    print('Evaluating from directory:', args.dir)
-    print('Evlauting at checkpoint iteration:', ckpt_iter)
-    args.config_file = args.dir + "/config.yaml"
-    args.pretrained_weights = args.dir + f"/eval/training_{ckpt_iter}/teacher_checkpoint.pth" # Change to where your checkpoint is
-    args.output_dir = args.dir + f"/eval/training_{ckpt_iter}/linear"
     model, autocast_dtype = setup_and_build_model(args)
     run_eval_linear(
         model=model,

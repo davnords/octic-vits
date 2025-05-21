@@ -1,3 +1,8 @@
+# Code written for the paper "Stronger ViTs With Octic Equivariance" (https://arxiv.org/abs/TBD)
+#
+# This source code is licensed under the Apache License, Version 2.0
+# found in the LICENSE file in the root directory of this source tree.
+
 from .model import OcticVisionTransformer
 import torch.nn as nn
 import torch
@@ -33,47 +38,35 @@ class BlockChunk(nn.ModuleList):
             x = b(x)
         return x
 
-
 class OcticDinoVisionTransformer(OcticVisionTransformer):
     def __init__(
         self,
-        img_size=224,
-        patch_size=16,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
-        mlp_ratio=4.0,
-        num_register_tokens=0,
-        drop_path_rate=0.0,
-        octic_block_layers=BlockD8,
-        standard_block_layers=partial(Block, attn_class=MemEffAttention),
-        # To work with timm
+        img_size: int = 224,
+        patch_size: int = 16,
+        embed_dim: int = 768,
+        depth:int = 12,
+        num_heads: int = 12,
+        mlp_ratio: float = 4.0,
+        num_register_tokens: int = 0,
+        drop_path_rate: float = 0.0,
+        octic_block_layers: Callable = BlockD8,
+        standard_block_layers: Callable = partial(Block, attn_class=MemEffAttention),
+        invariant: bool = False,
         **kwargs,
     ):
         """
         Args:
             img_size (int, tuple): input image size
             patch_size (int, tuple): patch size
-            in_chans (int): number of input channels
             embed_dim (int): embedding dimension
             depth (int): depth of transformer
             num_heads (int): number of attention heads
-            mlp_ratio (int): ratio of mlp hidden dim to embedding dim
-            qkv_bias (bool): enable bias for qkv if True
-            proj_bias (bool): enable bias for proj in attn if True
-            ffn_bias (bool): enable bias for ffn if True
-            drop_path_rate (float): stochastic depth rate
-            drop_path_uniform (bool): apply uniform drop rate across blocks
-            weight_init (str): weight init scheme
-            init_values (float): layer-scale init values
-            embed_layer (nn.Module): patch embedding layer
-            act_layer (nn.Module): MLP activation layer
-            block_fn (nn.Module): transformer block class
-            ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
-            block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
+            mlp_ratio (float): ratio of mlp hidden dim to embedding dim
             num_register_tokens: (int) number of extra cls tokens (so-called "registers")
-            interpolate_antialias: (str) flag to apply anti-aliasing when interpolating positional embeddings
-            interpolate_offset: (float) work-around offset to apply when interpolating positional embeddings
+            drop_path_rate (float): stochastic depth rate
+            octic_block_layers (nn.Module): transformer block class for octic equivariant layers
+            standard_block_layers (nn.Module): transformer block class for standard layers
+            invariant (bool): use invariantization or not
         """
         super().__init__(
             img_size=img_size,
@@ -86,7 +79,8 @@ class OcticDinoVisionTransformer(OcticVisionTransformer):
             octic_block_layers=octic_block_layers,
             standard_block_layers=standard_block_layers,
             drop_path_rate=drop_path_rate,
-            qkv_bias=True, ffn_bias=True, proj_bias=True
+            invariant=invariant,
+            qkv_bias=True, ffn_bias=True, proj_bias=True,
         )
         self.depth = depth
         
@@ -273,7 +267,22 @@ class OcticDinoVisionTransformer(OcticVisionTransformer):
         return no_weight_decay_params
 
 @register_model
-def hybrid_dinov2_vit_huge_patch16(pretrained=False, patch_size=16, num_register_tokens=0, **kwargs):
+def hybrid_dinov2_vit_large_patch16(patch_size=16, num_register_tokens=0, **kwargs):
+    model = OcticDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
+        mlp_ratio=4,
+        standard_block_layers=partial(Block, attn_class=MemEffAttention, init_values=1.0e-05),
+        octic_block_layers=partial(BlockD8, init_values=1.0e-05),
+        num_register_tokens=num_register_tokens,
+        **kwargs,
+    )
+    return model
+
+@register_model
+def hybrid_dinov2_vit_huge_patch16(patch_size=16, num_register_tokens=0, **kwargs):
     model = OcticDinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1280,
@@ -285,8 +294,36 @@ def hybrid_dinov2_vit_huge_patch16(pretrained=False, patch_size=16, num_register
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
-    if pretrained:
-        checkpoint = torch.load('/mimer/NOBACKUP/groups/snic2022-6-266/davnords/octic-vits/pretrained_models/hybrid_dinov2_huge_patch16.pth')
-        msg = model.load_state_dict(checkpoint['teacher'], strict=False)
-        print(msg)
+    return model
+
+@register_model
+def d8_inv_early_dinov2_vit_large_patch16(patch_size=16, num_register_tokens=0, **kwargs):
+    model = OcticDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
+        mlp_ratio=4,
+        invariant=True,
+        standard_block_layers=partial(Block, attn_class=MemEffAttention, init_values=1.0e-05),
+        octic_block_layers=partial(BlockD8, init_values=1.0e-05),
+        num_register_tokens=num_register_tokens,
+        **kwargs,
+    )
+    return model
+
+@register_model
+def d8_inv_early_dinov2_vit_huge_patch16(patch_size=16, num_register_tokens=0, **kwargs):
+    model = OcticDinoVisionTransformer(
+        patch_size=patch_size,
+        embed_dim=1280,
+        depth=32,
+        num_heads=16,
+        mlp_ratio=4,
+        invariant=True,
+        standard_block_layers=partial(Block, attn_class=MemEffAttention, init_values=1.0e-05),
+        octic_block_layers=partial(BlockD8, init_values=1.0e-05),
+        num_register_tokens=num_register_tokens,
+        **kwargs,
+    )
     return model

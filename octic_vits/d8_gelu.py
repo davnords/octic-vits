@@ -1,25 +1,15 @@
-import math
+# Code written for the paper "Stronger ViTs With Octic Equivariance" (https://arxiv.org/abs/TBD)
+#
+# This source code is licensed under the Apache License, Version 2.0
+# found in the LICENSE file in the root directory of this source tree.
 
 import torch
-import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-# TODO: better optimization of BLOCK_SIZE in kernels
-# TODO: seemingly, torch.compile does not tune BLOCK_SIZE currently (?)
-# at least they are not output in the logs.
-
-# TODO: better handling of constants
-# SQRT2_OVER_2 = math.sqrt(2) / 2
-# SQRT2_OVER_4 = math.sqrt(2) / 4
-# ONE_OVER_SQRT2PI = 1 / math.sqrt(2*math.pi)
-
 @triton.jit
 def tl_gelu(x, SQRT2_OVER_2: tl.constexpr=0.7071067812):
-
-    # Implementation supporting mixed precision
-    # tl.math.erf is not supported in fp16
-    x_fp32 = x.to(tl.float32)  
+    x_fp32 = x.to(tl.float32)  # Cast to fp32 to avoid mixed precision error (tl.math.erf is not supported in fp16)
     cdf = 0.5 * (1.0 + tl.math.erf(SQRT2_OVER_2 * x_fp32))  
     return x * cdf.to(x.dtype)
 
@@ -28,8 +18,7 @@ def tl_gelu_grad(x,
                  SQRT2_OVER_2: tl.constexpr=0.7071067812,
                  ONE_OVER_SQRT2PI: tl.constexpr=0.3989422804):
     
-    # Fp16 fix 
-    x_fp32 = x.to(tl.float32)  
+    x_fp32 = x.to(tl.float32) # Cast to fp32 to avoid mixed precision error (tl.math.erf is not supported in fp16)
     cdf = 0.5 * (1 + tl.math.erf(SQRT2_OVER_2 * x_fp32))
     cdf_grad = ONE_OVER_SQRT2PI * tl.exp(-0.5 * x_fp32 * x_fp32)
     cdf_grad = cdf_grad.to(x.dtype)  # Cast back to original dtype

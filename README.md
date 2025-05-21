@@ -18,9 +18,11 @@
 <br/>
 <p align="center">
     <img src="./assets/figure_1.png" alt="example" height="300">
-    <br>
-    Using octic layers in ViTs significantly reduces the computational complexity while maintaining or improving classification accuracy on ImageNet-1K, for both supervised and self-supervised training.
+    <!-- <br>
+    Using octic layers in ViTs significantly reduces the computational complexity while maintaining or improving classification accuracy on ImageNet-1K, for both supervised and self-supervised training. -->
 </p>
+
+Incorporating octic layers into Vision Transformers (ViTs) reduces the computational complexity while maintaining or improving representational power. We provide a PyTorch implementation for easy integration into existing ViT pipelines.
 
 ## Structure
 
@@ -31,7 +33,7 @@ from octic_vits import OcticVisionTransformer
 
 model = OcticVisionTransformer(embed_dim=1280, depth=32, num_heads=16)
 ```
-This will default to a hybrid model with the first half of its block being octic and the remaining standard (i.e. this model will have approx. 40% less FLOPs than a regular ViT-H). To instead obtain an invariant model, simply set `invariant=True`.
+This will default to a hybrid model with the first half of its block being octic and the remaining standard (i.e. this model will have approx. 40% less FLOPs than a regular ViT-H). To instead obtain an invariant model, simply set `invariant=True`. You can further decide on the number of octic blocks `k` by setting `octic_equi_break_layer=k`.
 
 ### DeiT III
 Code based on the official [repo](https://github.com/facebookresearch/deit) has been placed in the [`deit`](deit) folder.
@@ -48,24 +50,7 @@ All the code is written with the intent to be run on a [Slurm](https://slurm.sch
 ### Environment
 For DINOv2 we use the same environment as in the original [repo](https://github.com/facebookresearch/dinov2) and same goes for [deit](https://github.com/facebookresearch/deit). Additional miscellaneous installations, e.g. [submitit](https://github.com/facebookincubator/submitit), need to be additionally downloaded.   
 
-Since DeiT III is deprecated we provide some additional guidance on its installation. It uses [NVIDIA apex](https://github.com/NVIDIA/apex). Thus, you must compile apex. Begin by creating a new virtual environment for Python, we use conda and Python 3.10. Then: 
-
-Clone apex:
-```bash
-git clone https://github.com/NVIDIA/apex.git
-```
-
-Run:
-```bash
-cd apex
-git checkout 2386a912164
-python setup.py install --cuda_ext --cpp_ext
-```
-
-Now that you have compiled apex, you can continue setting up the Python environment. Either do so by installing the packages in the `deit/requirements.txt` manually or by inheriting our conda environment by running:
-```bash
-conda env update --file deit/environment.yml
-```
+Since DeiT III is deprecated we provide some additional guidance on its installation in [`DEIT_ENV.md`](DEIT_ENV.md)
 
 ### Data
 
@@ -225,9 +210,10 @@ Download the weights from here to reproduce the evaluation metrics. The DINOv2 w
 </table>
 
 ### Evaluation
+We will use the Hybrid ViT-H model as an example (as it is the best performing) to showcase how you can perform evaluation. You can replace the model with the one that you want to test.
 
 #### Deit III 
-After downloading the weights you should be able to run the following command to evaluate a model (e.g. Hybrid ViT-H):
+After downloading the weights you should be able to run the following command:
 ```bash
 python experiments/eval_deit.py --model hybrid_deit_huge_patch14 --eval pretrained_models/hybrid_deit_huge_patch14.pth
 ```
@@ -236,11 +222,35 @@ This should give:
 * Acc@1 84.996 Acc@5 96.390 loss 0.799
 ```
 
-### Training
-We train on a cluster using [submitit](https://github.com/facebookincubator/submitit). So first you must set up the cluster settings in `octo/utils/cluster.py` and then you can simply run:
+#### DINOv2 
+For classification, run:
 ```bash
-python experiments/train_octo.py --gpus 4 --nodes 4
+python experiments/eval_dinov2_classification.py output_dir --config-file dinov2/configs/eval/hybrid_vith16.yaml --pretrained-weights pretrained_models/hybrid_dinov2_huge_patch16.pth
 ```
+This should give an accuracy of 82.2% and 81.4% for linear and knn, respectively.
+
+For segmentation, run:
+```bash
+python experiments/eval_dinov2_segmentation.py model_path=dinov2/eval/segmentation/dinov2_loader.py model_loader_kwargs.model_name=dinov2_hybrid_vith16 model_loader_kwargs.weights=pretrained_models/hybrid_dinov2_huge_patch16.pth distributed=True ntasks_per_node=4 account=... gpus-per-node=4 nodes=1 output_dir=./output_dir
+```
+This should give an mIoU of 35.1 (linear) and 31.1 (knn) for ADE20K and 70.8 (linear) and 61.7 (knn) for VOC2012.
+
+
+### Training
+Per-GPU batch sizes are adjusted to work well on A100-40GB. Feel free to adjust for your settings while making sure the effective batch size remains the same (2048 for DeiT III and 1024 for DINOv2).
+
+#### DeiT III
+To launch distributed training, run:
+```bash
+python experiments/train_deit.py --model hybrid_deit_huge_patch14
+```
+
+#### DINOv2
+To launch distributed training, run:
+```bash
+python experiments/train_dinov2.py --config-file dinov2/configs/train/hybrid_vith16.yaml --ngpus 4 --nodes 2
+```
+
 ### Equivariance
 We have provided a utility file to verify octic equivariance (and invariance). Simply run:
 ```bash

@@ -26,7 +26,7 @@ def launch_evals(
     output_dir: Path | str = ".",
     model_path: Path | str = Path(__file__).parent / "model.py",
     model_loader_kwargs: Mapping = {},
-    evals_config_path: Path | str | None = Path(__file__).parent / "eval_config.yaml",
+    evals_config_path: Path | str | None = Path(__file__).parent.parent / "dinov2" / "eval" / "segmentation" / "eval_config.yaml",
     evals_config: Mapping | None = None,
     distributed: bool = False,
     partition: str | None = None,

@@ -14,13 +14,10 @@ from typing import Sequence, Tuple, Union, Callable
 
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
 
 from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
-from dinov2.models.hybrid_vision_transformer_simple import HybridDinoVisionTransformer
-from dinov2.models.d8_vision_transformer import DinoVisionTransformerD8
-from timm.models.registry import register_model
+from octic_vits.dinov2_models import *
 
 
 logger = logging.getLogger("dinov2")
@@ -342,18 +339,6 @@ def init_weights_vit_timm(module: nn.Module, name: str = ""):
         if module.bias is not None:
             nn.init.zeros_(module.bias)
 
-def vit_base(patch_size=16, num_register_tokens=0, **kwargs):
-    model = DinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
-    return model
 
 def vit_large(patch_size=16, num_register_tokens=0, **kwargs):
     model = DinoVisionTransformer(
@@ -382,211 +367,18 @@ def vit_huge(patch_size=16, num_register_tokens=0, **kwargs):
     return model
 
 
-def vit_giant2(patch_size=16, num_register_tokens=0, **kwargs):
-    """
-    Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64
-    """
-    model = DinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=1536,
-        depth=40,
-        num_heads=24,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
-    return model
-
-# ----------------- hybrid models -----------------
-
-def hybrid_vit_base(patch_size=16, num_register_tokens=0, **kwargs):
-    model = HybridDinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
-    return model
-
 def hybrid_vit_large(patch_size=16, num_register_tokens=0, **kwargs):
-    model = HybridDinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=1024,
-        depth=24,
-        num_heads=16,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
-    return model
-
-def hybrid_vit_large_wide(patch_size=16, num_register_tokens=0, **kwargs):
-    model = HybridDinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=1024,
-        depth=24,
-        num_heads=16,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-
-        # Octic specific params
-        equi_embed_dim=2048,
-        equi_mlp_ratio=6,
-        equi_num_heads=32,
-
-        **kwargs,
-    )
+    model = hybrid_dinov2_vit_large_patch16(patch_size=patch_size, num_register_tokens=num_register_tokens, **kwargs)
     return model
 
 def hybrid_vit_huge(patch_size=16, num_register_tokens=0, **kwargs):
-    model = HybridDinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=1280,
-        depth=32,
-        num_heads=16,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
+    model = hybrid_dinov2_vit_huge_patch16(patch_size=patch_size, num_register_tokens=num_register_tokens, **kwargs)
     return model
 
-
-def hybrid_vit_giant2(patch_size=16, num_register_tokens=0, **kwargs):
-    """
-    Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64
-    """
-    model = HybridDinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=1536,
-        depth=40,
-        num_heads=24,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
-    return model
-
-from d8_components.d8_invarization import PowerSpectrumInvariant
 def vit_large_inv_early(patch_size=16, num_register_tokens=0, **kwargs):
-    model = HybridDinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=1024,
-        depth=24,
-        num_heads=16,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        invariant=PowerSpectrumInvariant,
-        **kwargs,
-    )
+    model = d8_inv_early_dinov2_vit_large_patch16(patch_size=patch_size, num_register_tokens=num_register_tokens, **kwargs)
     return model
 
 def vit_huge_inv_early(patch_size=16, num_register_tokens=0, **kwargs):
-    model = HybridDinoVisionTransformer(
-        patch_size=patch_size,
-        embed_dim=1280,
-        depth=32,
-        num_heads=16,
-        mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
-        num_register_tokens=num_register_tokens,
-        invariant=PowerSpectrumInvariant,
-        **kwargs,
-    )
-    return model
-
-def d8_vit_large(patch_size=16, num_register_tokens=0, **kwargs):
-    model = DinoVisionTransformerD8(
-        patch_size=patch_size,
-        embed_dim=1024,
-        depth=24,
-        num_heads=16,
-        mlp_ratio=4,
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
-    return model
-
-def d8_vit_large_wide(patch_size=16, num_register_tokens=0, **kwargs):
-    model = DinoVisionTransformerD8(
-        patch_size=patch_size,
-        embed_dim=1280,
-        depth=24,
-        num_heads=16,
-        mlp_ratio=5,
-        num_register_tokens=num_register_tokens,
-        **kwargs,
-    )
-    return model
-
-# ----------- for finetuning -----------
-
-def load_weights(model, pretrained_weights):
-    # Load the pretrained weights into the model
-    ckpt = torch.load(pretrained_weights, map_location="cpu", weights_only=False)
-    has_orig_mod = any(k.startswith("_orig_mod.") for k in ckpt['teacher'].keys())
-    if has_orig_mod and not hasattr(model, "_orig_mod"):
-        print("Detected compiled state_dict but loading into an uncompiled model. Stripping `_orig_mod.` prefixes...")
-        ckpt['teacher'] = {k.replace("_orig_mod.", ""): v for k, v in ckpt['teacher'].items()}
-    ckpt['teacher'] = {k.replace("backbone.", ""): v for k, v in ckpt['teacher'].items()}
-    msg = model.load_state_dict(ckpt['teacher'], strict=False)
-    print(msg)
-
-
-@register_model
-def dinov2_hybrid_vitl16(pretrained=False, **kwargs):
-    model = hybrid_vit_large(block_chunks=0, init_values=1.0e-05)
-    if pretrained:
-        load_weights(model, '/mimer/NOBACKUP/groups/snic2022-6-266/davnords/experiments/octo/dinov2/hybrid_vit_large/4146824/eval/training_124999/teacher_checkpoint.pth')
-    return model
-
-@register_model
-def dinov2_vitl16(pretrained=False, init_values=1.0e-05, **kwargs):
-    model = vit_large(block_chunks=0, init_values=init_values)
-    if pretrained:
-        load_weights(model, '/mimer/NOBACKUP/groups/snic2022-6-266/davnords/experiments/octo/dinov2/4140714/eval/training_124999/teacher_checkpoint.pth')
-    return model
-
-@register_model
-def dinov2_vitl16_inv_early(pretrained=False, **kwargs):
-    model = vit_large_inv_early(block_chunks=0, init_values=1.0e-05)
-    if pretrained:
-        load_weights(model, '/mimer/NOBACKUP/groups/snic2022-6-266/davnords/experiments/octo/dinov2/vit_large_inv_early/4149339/eval/training_124999/teacher_checkpoint.pth')
-    return model
-
-@register_model
-def dinov2_vith16_inv_early(pretrained=False, **kwargs):
-    model = vit_huge_inv_early(block_chunks=0, init_values=1.0e-05)
-    if pretrained:
-        load_weights(model, '/mimer/NOBACKUP/groups/snic2022-6-266/davnords/experiments/octo/dinov2/vit_huge_inv_early/4200727/eval/training_112499/teacher_checkpoint.pth')
-    return model
-
-@register_model
-def dinov2_vith16(pretrained=False, **kwargs):
-    model = vit_huge(block_chunks=0, init_values=1.0e-05)
-    if pretrained:
-        load_weights(model, '/mimer/NOBACKUP/groups/snic2022-6-266/davnords/experiments/octo/dinov2/13465788/eval/training_112499/teacher_checkpoint.pth')
-    return model
-
-@register_model
-def dinov2_hybrid_vith16(pretrained=False, **kwargs):
-    model = hybrid_vit_huge(block_chunks=0, init_values=1.0e-05)
-    if pretrained:
-        load_weights(model, '/mimer/NOBACKUP/groups/snic2022-6-266/davnords/experiments/octo/dinov2/hybrid_vit_huge/4270493/eval/training_112499/teacher_checkpoint.pth')
-    return model
-
-@register_model
-def dinov2_d8_vitl16(pretrained=False, **kwargs):
-    model = d8_vit_large(block_chunks=0, init_values=1.0e-05)
-    if pretrained:
-        load_weights(model, '/mimer/NOBACKUP/groups/snic2022-6-266/davnords/experiments/octo/dinov2/d8_vit_large/4167756/eval/training_124999/teacher_checkpoint.pth')
+    model = d8_inv_early_dinov2_vit_huge_patch16(patch_size=patch_size, num_register_tokens=num_register_tokens, **kwargs)
     return model

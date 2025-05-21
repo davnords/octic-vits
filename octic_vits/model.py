@@ -1,15 +1,15 @@
+# Code written for the paper "Stronger ViTs With Octic Equivariance" (https://arxiv.org/abs/TBD)
+#
+# This source code is licensed under the Apache License, Version 2.0
+# found in the LICENSE file in the root directory of this source tree.
+
 import torch.nn as nn
 import torch
-# Here we should create a truly generic model where D_8, I_8 and H_8 are all supported easily
-# Maybe we will make one for dinov2 and one for deit iii (or maybe we can make one generic that just uses slightly different blocks)
 
 from octic_vits.d8_layers import (
     LayerNormD8,
     PatchEmbedD8,
     TritonGeluD8,
-    AttentionD8,
-    MlpD8,
-    Layer_scale_init_BlockD8,
     BlockD8
 )
 
@@ -18,34 +18,55 @@ from timm.layers import trunc_normal_
 from octic_vits.d8_utils import convert_8tuple_to_5tuple, isotypic_dim_interpolation, interpolate_spatial_tuple, convert_5tuple_to_8tuple
 import torch.nn.functional as F
 from .d8_invariantization import PowerSpectrumInvariant
-# from .standard_vit_components import Block, Attention, Mlp
 from timm.models.vision_transformer import Block
 from functools import partial
+from typing import Callable
 
 class OcticVisionTransformer(nn.Module):
-    """ Octic Vision Transformer, modified from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
+    """
+    Octic Vision Transformer, modified from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
+    Args:
+        img_size (int, tuple): input image size
+        patch_size (int, tuple): patch size
+        in_chans (int): number of input channels
+        embed_dim (int): embedding dimension
+        depth (int): depth of transformer
+        num_heads (int): number of attention heads
+        mlp_ratio (float): ratio of mlp hidden dim to embedding dim
+        qkv_bias (bool): enable bias for qkv if True
+        drop_rate (float): dropout rate
+        attn_drop_rate (float): attention dropout rate
+        drop_path_rate (float): stochastic depth rate
+        octic_block_layers (nn.Module): transformer block class for octic equivariant layers
+        standard_block_layers (nn.Module): transformer block class for standard layers
+        Patch_layer (nn.Module): patch embedding layer
+        init_scale (float): layer-scale init values
+        num_register_tokens: (int) number of extra cls tokens (so-called "registers")
+        global_pool (bool): use global pool or not
+        invariant (bool): use invariantization or not
+        octic_equi_break_layer (int): layer to break equivariance, None for breaking in the middle
     """
     def __init__(self,
-        img_size=224,
-        patch_size=16,
-        in_chans=3,
-        num_classes=1000,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
-        mlp_ratio=4.,
-        qkv_bias=False,
-        drop_rate=0.,
-        attn_drop_rate=0.,
-        drop_path_rate=0.,
-        octic_block_layers=BlockD8,
-        standard_block_layers=Block,
-        Patch_layer=PatchEmbedD8,
-        init_scale=1e-4,
-        num_register_tokens=0,
-        global_pool=False,
-        invariant=False,
-        octic_equi_break_layer=None, # None for breaking in the middle. -1 for breaking at the end
+        img_size: int = 224,
+        patch_size: int = 16,
+        in_chans: int = 3,
+        num_classes: int = 1000,
+        embed_dim: int = 768,
+        depth: int = 12,
+        num_heads: int = 12,
+        mlp_ratio: float = 4.,
+        qkv_bias:bool = False,
+        drop_rate:float = 0.,
+        attn_drop_rate:float = 0.,
+        drop_path_rate: float = 0.,
+        octic_block_layers: Callable = BlockD8,
+        standard_block_layers: Callable = Block,
+        Patch_layer: Callable = PatchEmbedD8,
+        init_scale: float = 1e-4,
+        num_register_tokens: int = 0,
+        global_pool: bool = False,
+        invariant: bool = False,
+        octic_equi_break_layer: int | None = None, # None for breaking in the middle. -1 for breaking at the end
         **kwargs):
         super().__init__()  
         assert embed_dim % 8 == 0, "embed_dim must be divisible by 8"
@@ -83,6 +104,11 @@ class OcticVisionTransformer(nn.Module):
                     nn.Parameter(torch.zeros(1, 1, 2, embed_dim // 4), requires_grad=False)
                 ]
             )
+        assert num_register_tokens >= 0
+        if num_register_tokens > 0:
+            self.register_tokens = (
+            nn.ParameterList([nn.Parameter(torch.zeros(1, self.num_register_tokens, embed_dim // 8), requires_grad=(i == 0))for i in range(8)]) if num_register_tokens else None
+            )
         self.pos_embed = nn.ParameterList([nn.Parameter(torch.empty(img_size//patch_size//2, img_size//patch_size//2, embed_dim//8)) for _ in range(6)])
 
         dpr = [drop_path_rate for i in range(depth)]
@@ -119,6 +145,8 @@ class OcticVisionTransformer(nn.Module):
         )
 
         std = 8*.02 # Changed initialization from baseline that uses 0.02
+        if self.num_register_tokens>0:
+            nn.init.normal_(self.register_tokens[0], std=1e-6)
         for p in self.pos_embed:
             trunc_normal_(p, std=SQRT2_OVER_2*std)
         if not global_pool:
@@ -151,7 +179,17 @@ class OcticVisionTransformer(nn.Module):
             # Append class token to the input
             cls_token = tuple(self.cls_token[i].expand(B, *self.cls_token[i].shape[1:]) for i in range(5))
             xs = tuple( torch.cat((cls_token[i], xs[i]), dim=1) for i in range(5))
-                
+
+        if self.num_register_tokens > 0:
+            xs = tuple(torch.cat(
+                (
+                    xs[i][:, :1],
+                    self.register_tokens[i].expand(xs[i].shape[0], -1, -1),
+                    xs[i][:, 1:],
+                ),
+                dim=1,
+            ) for i in range(8))
+
         for blk in self.blocks[:self.octic_equi_break_layer]:
             xs = blk(xs)
         
