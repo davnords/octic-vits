@@ -27,7 +27,7 @@ Incorporating octic layers into Vision Transformers (ViTs) reduces the computati
 ## Structure
 
 ### Octic ViTs
-In the [`octic_vits`](octic_vits) folder you find all the components to build octic-equivariant Vision Transformers (intended to be compatible with the [timm](https://github.com/huggingface/pytorch-image-models) library). For example, to create an octic ViT-H you can run the following:
+In the [octic_vits](octic_vits) folder you find all the components to build octic-equivariant Vision Transformers (intended to be compatible with the [timm](https://github.com/huggingface/pytorch-image-models) library). For example, to create an octic ViT-H you can run the following:
 ```python
 from octic_vits import OcticVisionTransformer
 
@@ -45,7 +45,7 @@ Code based on the official [repo](https://github.com/facebookresearch/dinov2) ha
 Code to reproduce the experiments can be found in the [experiments folder](experiments). Below follows general instruction on how to run it and how to obtain pretrained model weights.
 
 ### Setup
-All the code is written with the intent to be run on a [Slurm](https://slurm.schedmd.com/documentation.html) cluster using [submitit](https://github.com/facebookincubator/submitit). So first you must set up the cluster settings in[`utils/cluster.py`](utils/cluster.py). If you intend to run it using `torchrun` instead, it should work straightforwardly. Also, make sure to run `export PYTHONPATH=$(pwd)` in the root folder of this directory to ensure relative imports work as intended. 
+All the code is written with the intent to be run on a [Slurm](https://slurm.schedmd.com/documentation.html) cluster using [submitit](https://github.com/facebookincubator/submitit). So first you must set up the cluster settings in [utils/cluster.py](utils/cluster.py). If you intend to run it using `torchrun` instead, it should work straightforwardly. Also, make sure to run `export PYTHONPATH=$(pwd)` in the root folder of this directory to ensure relative imports work as intended. 
 
 ### Environment
 For DINOv2 we use the same environment as in the original [repo](https://github.com/facebookresearch/dinov2) and same goes for [deit](https://github.com/facebookresearch/deit). Additional miscellaneous installations, e.g. [submitit](https://github.com/facebookincubator/submitit), need to be additionally downloaded.   
