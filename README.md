@@ -276,7 +276,7 @@ Code structure is inspired by [capi](https://github.com/facebookresearch/capi) a
 ## Cite
 If you find this repository useful, please consider giving a star :star: and citation :octopus::
 
-```
+```bibtex
 @misc{nordstrom2025strongervits,
   title={Stronger ViTs with Octic Equivariance},
   author={Nordström, David and Edstedt, Johan and Kahl, Fredrik and Bökman, Georg},
