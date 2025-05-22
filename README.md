@@ -11,7 +11,7 @@
     <a href="https://scholar.google.com/citations?user=FUE3Wd0AAAAJ">Georg Bökman</a>
   </p>
   <h2 align="center"><p>
-    <a align="center">Paper (coming soon)</a>
+    <a align="center" href="https://arxiv.org/abs/2505.15441" target="_blank" rel="noopener noreferrer">Paper</a>
   </p></h2>
   <div align="center"></div>
 </p>
@@ -277,10 +277,13 @@ Code structure is inspired by [capi](https://github.com/facebookresearch/capi) a
 If you find this repository useful, please consider giving a star :star: and citation :octopus::
 
 ```bibtex
-@misc{nordstrom2025strongervits,
-  title={Stronger ViTs with Octic Equivariance},
-  author={Nordström, David and Edstedt, Johan and Kahl, Fredrik and Bökman, Georg},
-  journal={arXiv:TBD},
-  year={2025}
+@misc{nordström2025strongervitsocticequivariance,
+      title={Stronger ViTs With Octic Equivariance}, 
+      author={David Nordström and Johan Edstedt and Fredrik Kahl and Georg Bökman},
+      year={2025},
+      eprint={2505.15441},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2505.15441}, 
 }
 ```
