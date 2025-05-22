@@ -268,7 +268,7 @@ python experiments/complexity.py --amp --compile
 - [ ] Add to timm library
 
 ## License
-Stronger ViTs with Octic Equivariance code and model weights are released under the Apache License 2.0. See [LICENSE](LICENSE) for additional details. Training recipes are taken from [DeiT III](https://github.com/facebookresearch/deit) and [DINOv2](https://github.com/facebookresearch/dinov2), and evaluation is taken from [capi](https://github.com/facebookresearch/capi), all released under the Apache License 2.0.
+Stronger ViTs with Octic Equivariance code is released under the Apache License 2.0. See [LICENSE](LICENSE) for additional details. Training recipes are taken from [DeiT III](https://github.com/facebookresearch/deit) and [DINOv2](https://github.com/facebookresearch/dinov2), and evaluation is taken from [capi](https://github.com/facebookresearch/capi), all released under the Apache License 2.0.
 
 ## Credit
 Code structure is inspired by [capi](https://github.com/facebookresearch/capi) and [RoMa](https://github.com/Parskatt/RoMa).
