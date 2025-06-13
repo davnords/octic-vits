@@ -6,6 +6,8 @@
 import torch
 import triton
 import triton.language as tl
+import helion.language as hl
+import helion
 
 @triton.jit
 def tl_gelu(x, SQRT2_OVER_2: tl.constexpr=0.7071067812):
@@ -481,6 +483,324 @@ class TritonGeluD8(torch.nn.Module):
     def forward(self, xs):
         return TritonGeluD8Function.apply(xs[0], xs[1], xs[2], xs[3], xs[4])
 
+################################################################################
+# Helion implementation
+################################################################################
+
+def gelu(x):
+    SQRT_OVER_2 = 0.7071067812
+    cdf = 0.5 * (1.0 + torch.erf(SQRT_OVER_2 * x))
+    return x * cdf
+
+def gelu_grad(x):
+    SQRT_OVER_2 = 0.7071067812
+    ONE_OVER_SQRT2PI = 0.3989422804
+    x_fp32 = x.to(torch.float32)
+    cdf = 0.5 * (1 + torch.erf(SQRT_OVER_2 * x_fp32))
+    cdf_grad = ONE_OVER_SQRT2PI * torch.exp(-0.5 * x_fp32 * x_fp32)
+    cdf_grad = cdf_grad.to(x.dtype)
+    cdf = cdf.to(x.dtype)
+    return cdf_grad * x + cdf
+
+def isotypic_to_regular(x_1d_0, x_1d_1, x_1d_2, x_1d_3, x_2d_0, x_2d_1, x_2d_2, x_2d_3):
+    SQRT2_OVER_4 = 0.3535533906
+    a = x_1d_0 + x_1d_1
+    b = x_1d_0 - x_1d_1
+    c = x_1d_2 + x_1d_3
+    d = x_1d_2 - x_1d_3
+    e = x_2d_0 + x_2d_1
+    f = x_2d_0 - x_2d_1
+    g = x_2d_2 + x_2d_3
+    h = x_2d_2 - x_2d_3
+    apc = a + c
+    amc = a - c
+    bpd = b + d
+    bmd = b - d
+    eph = e + h
+    emh = e - h
+    fpg = f + g
+    fmg = f - g
+    
+    x_1d_0 = SQRT2_OVER_4 * (apc + eph)
+    x_1d_1 = SQRT2_OVER_4 * (amc + fmg)
+    x_1d_2 = SQRT2_OVER_4 * (apc - eph)
+    x_1d_3 = SQRT2_OVER_4 * (amc - fmg)
+    x_2d_0 = SQRT2_OVER_4 * (bpd - fpg)
+    x_2d_1 = SQRT2_OVER_4 * (bmd - emh)
+    x_2d_2 = SQRT2_OVER_4 * (bpd + fpg)
+    x_2d_3 = SQRT2_OVER_4 * (bmd + emh)
+    
+    return x_1d_0, x_1d_1, x_1d_2, x_1d_3, x_2d_0, x_2d_1, x_2d_2, x_2d_3
+
+def regular_to_isotypic(x_1d_0, x_1d_1, x_1d_2, x_1d_3, x_2d_0, x_2d_1, x_2d_2, x_2d_3):
+    SQRT2_OVER_4 = 0.3535533906
+    a = x_1d_0 + x_1d_1
+    b = x_1d_0 - x_1d_1
+    c = x_1d_2 + x_1d_3
+    d = x_1d_2 - x_1d_3
+    e = x_2d_0 + x_2d_1
+    f = x_2d_0 - x_2d_1
+    g = x_2d_2 + x_2d_3
+    h = x_2d_2 - x_2d_3
+    apc = a + c
+    cma = c - a
+    bpd = b + d
+    bmd = b - d
+    epg = e + g
+    gme = g - e
+    fph = f + h
+    fmh = f - h
+    
+    x_1d_0 = SQRT2_OVER_4 * (apc + epg)
+    x_1d_1 = SQRT2_OVER_4 * (apc - epg)
+    x_1d_2 = SQRT2_OVER_4 * (bpd + fph)
+    x_1d_3 = SQRT2_OVER_4 * (bpd - fph)
+    x_2d_0 = SQRT2_OVER_4 * (gme - cma)
+    x_2d_1 = SQRT2_OVER_4 * (bmd + fmh)
+    x_2d_2 = SQRT2_OVER_4 * (bmd - fmh)
+    x_2d_3 = SQRT2_OVER_4 * (gme + cma)
+    
+    return x_1d_0, x_1d_1, x_1d_2, x_1d_3, x_2d_0, x_2d_1, x_2d_2, x_2d_3
+
+@helion.kernel(ignore_warnings=[helion.exc.TensorOperationInWrapper], config=helion.Config(block_sizes=[1, 4, 32], loop_orders=[[2, 0, 1]], flatten_loops=[False], num_warps=4, num_stages=7, indexing='pointer'))
+def helion_d8_gelu_fwd(
+    x_A1, x_A2, x_B1, x_B2, x_2d,
+):
+    # TODO: Some asserts are curently not getting compiled
+
+    # assert len(x_A1.shape) == 3, "Input must be a 3D tensor [B, N, C]"
+    # assert len(x_2d.shape) == 4, "Input must be a 4D tensor [B, N, 2, 2*C]"
+    # assert x_2d.shape[2] == 2, "3rd dim must be size 2"
+    # assert x_A1.shape[0] == x_2d.shape[0], "Inputs must have compatible size"
+    # assert x_A1.shape[1] == x_2d.shape[1], "Inputs must have compatible size"
+    # assert 2*x_A1.shape[2] == x_2d.shape[3], "Inputs must have compatible size"
+    # for x, y in zip(x_A1.shape, x_A2.shape):
+    #     assert x == y, "Inputs must have compatible size"
+    # for x, y in zip(x_A1.shape, x_B1.shape):
+    #     assert x == y, "Inputs must have compatible size"
+    # for x, y in zip(x_A1.shape, x_B2.shape):
+    #     assert x == y, "Inputs must have compatible size"
+    # assert 2*x_A1.shape[2] == x_2d.shape[3], "Inputs must have compatible size"
+    # assert x_A1.is_contiguous(), "Input must be contiguous"
+    # assert x_A2.is_contiguous(), "Input must be contiguous"
+    # assert x_B1.is_contiguous(), "Input must be contiguous"
+    # assert x_B2.is_contiguous(), "Input must be contiguous"
+    # assert x_2d.is_contiguous(), "Input must be contiguous"
+
+    B, N, C = x_A1.shape
+    y_A1 = torch.empty_like(x_A1)
+    y_A2 = torch.empty_like(x_A2)
+    y_B1 = torch.empty_like(x_B1)
+    y_B2 = torch.empty_like(x_B2)
+    y_2d = torch.empty_like(x_2d)
+    
+    x_2d_0 = x_2d[:,:,0,:C]
+    x_2d_1 = x_2d[:,:,0,C:]
+    x_2d_2 = x_2d[:,:,1,:C]
+    x_2d_3 = x_2d[:,:,1,C:]
+    
+    y_2d_0 = torch.empty_like(x_2d_0)
+    y_2d_1 = torch.empty_like(x_2d_1)
+    y_2d_2 = torch.empty_like(x_2d_2)
+    y_2d_3 = torch.empty_like(x_2d_3)
+
+    # Total number of C elements across all B,N dimensions    
+    for tile_b, tile_n, tile_c in hl.tile([B, N, C]):
+        x_1d_0_chunk = x_A1[tile_b, tile_n, tile_c]
+        x_1d_1_chunk = x_A2[tile_b, tile_n, tile_c]
+        x_1d_2_chunk = x_B1[tile_b, tile_n, tile_c]
+        x_1d_3_chunk = x_B2[tile_b, tile_n, tile_c]
+        x_2d_0_chunk = x_2d_0[tile_b, tile_n, tile_c]
+        x_2d_1_chunk = x_2d_1[tile_b, tile_n, tile_c]
+        x_2d_2_chunk = x_2d_2[tile_b, tile_n, tile_c]
+        x_2d_3_chunk = x_2d_3[tile_b, tile_n, tile_c]
+        
+        # isotypic to regular
+
+        x_1d_0_chunk, x_1d_1_chunk, x_1d_2_chunk, x_1d_3_chunk, x_2d_0_chunk, x_2d_1_chunk, x_2d_2_chunk, x_2d_3_chunk = isotypic_to_regular(x_1d_0_chunk, x_1d_1_chunk, x_1d_2_chunk, x_1d_3_chunk, x_2d_0_chunk, x_2d_1_chunk, x_2d_2_chunk, x_2d_3_chunk)
+
+        # gelu
+        x_1d_0_chunk = gelu(x_1d_0_chunk)
+        x_1d_1_chunk = gelu(x_1d_1_chunk)
+        x_1d_2_chunk = gelu(x_1d_2_chunk)
+        x_1d_3_chunk = gelu(x_1d_3_chunk)
+        x_2d_0_chunk = gelu(x_2d_0_chunk)
+        x_2d_1_chunk = gelu(x_2d_1_chunk)
+        x_2d_2_chunk = gelu(x_2d_2_chunk)
+        x_2d_3_chunk = gelu(x_2d_3_chunk)
+    
+        # regular to isotypic
+        x_1d_0_chunk, x_1d_1_chunk, x_1d_2_chunk, x_1d_3_chunk, x_2d_0_chunk, x_2d_1_chunk, x_2d_2_chunk, x_2d_3_chunk = regular_to_isotypic(x_1d_0_chunk, x_1d_1_chunk, x_1d_2_chunk, x_1d_3_chunk, x_2d_0_chunk, x_2d_1_chunk, x_2d_2_chunk, x_2d_3_chunk)
+        
+        y_A1[tile_b, tile_n, tile_c] = x_1d_0_chunk
+        y_A2[tile_b, tile_n, tile_c] = x_1d_1_chunk
+        y_B1[tile_b, tile_n, tile_c] = x_1d_2_chunk
+        y_B2[tile_b, tile_n, tile_c] = x_1d_3_chunk
+        y_2d_0[tile_b, tile_n, tile_c] = x_2d_0_chunk
+        y_2d_1[tile_b, tile_n, tile_c] = x_2d_1_chunk
+        y_2d_2[tile_b, tile_n, tile_c] = x_2d_2_chunk
+        y_2d_3[tile_b, tile_n, tile_c] = x_2d_3_chunk
+
+    y_2d[:, :, 0, :C] = y_2d_0
+    y_2d[:, :, 0, C:] = y_2d_1
+    y_2d[:, :, 1, :C] = y_2d_2
+    y_2d[:, :, 1, C:] = y_2d_3
+    return y_A1, y_A2, y_B1, y_B2, y_2d
+
+## Note that this has been tuned for a RTX A5500
+@helion.kernel(ignore_warnings=[helion.exc.TensorOperationInWrapper], config=helion.Config(block_sizes=[8, 8, 4], loop_orders=[[1, 0, 2]], flatten_loops=[True], num_warps=1, num_stages=6, indexing='block_ptr'))
+def helion_d8_gelu_bwd(g_A1, g_A2, g_B1, g_B2, g_2d, x_A1, x_A2, x_B1, x_B2, x_2d):
+    # TODO: Some asserts are curently not getting compiled
+
+    # assert len(x_A1.shape) == 3, "Input must be a 3D tensor [B, N, C]"
+    # assert len(x_2d.shape) == 4, "Input must be a 4D tensor [B, N, 2, 2*C]"
+    # assert x_2d.shape[2] == 2, "3rd dim must be size 2"
+    # assert x_A1.shape[0] == x_2d.shape[0], "Inputs must have compatible size"
+    # assert x_A1.shape[1] == x_2d.shape[1], "Inputs must have compatible size"
+    # assert 2*x_A1.shape[2] == x_2d.shape[3], "Inputs must have compatible size"
+    # for x, y in zip(x_A1.shape, x_A2.shape):
+    #     assert x == y, "Inputs must have compatible size"
+    # for x, y in zip(x_A1.shape, x_B1.shape):
+    #     assert x == y, "Inputs must have compatible size"
+    # for x, y in zip(x_A1.shape, x_B2.shape):
+    #     assert x == y, "Inputs must have compatible size"
+    # assert 2*x_A1.shape[2] == x_2d.shape[3], "Inputs must have compatible size"
+    # assert x_A1.is_contiguous(), "Input must be contiguous"
+    # assert x_A2.is_contiguous(), "Input must be contiguous"
+    # assert x_B1.is_contiguous(), "Input must be contiguous"
+    # assert x_B2.is_contiguous(), "Input must be contiguous"
+    # assert x_2d.is_contiguous(), "Input must be contiguous"
+    # for g, x in zip(g_A1.shape, x_A1.shape):
+    #     assert g == x, "Inputs must have compatible size"
+    # for g, x in zip(g_A2.shape, x_A2.shape):
+    #     assert g == x, "Inputs must have compatible size"
+    # for g, x in zip(g_B1.shape, x_B1.shape):
+    #     assert g == x, "Inputs must have compatible size"
+    # for g, x in zip(g_B2.shape, x_B2.shape):
+    #     assert g == x, "Inputs must have compatible size"
+    # for g, x in zip(g_2d.shape, x_2d.shape):
+    #     assert g == x, "Inputs must have compatible size"
+    
+
+    B, N, C = x_A1.shape
+
+    g_in_A1 = torch.empty_like(g_A1)
+    g_in_A2 = torch.empty_like(g_A2)
+    g_in_B1 = torch.empty_like(g_B1)
+    g_in_B2 = torch.empty_like(g_B2)
+    g_in_2d = torch.empty_like(g_2d)
+    
+    x_2d_0 = x_2d[:, :, 0, :C]
+    x_2d_1 = x_2d[:, :, 0, C:]
+    x_2d_2 = x_2d[:, :, 1, :C]
+    x_2d_3 = x_2d[:, :, 1, C:]
+    
+    g_2d_0 = g_2d[:, :, 0, :C]
+    g_2d_1 = g_2d[:, :, 0, C:]
+    g_2d_2 = g_2d[:, :, 1, :C]
+    g_2d_3 = g_2d[:, :, 1, C:]
+    
+    g_in_2d_0 = g_in_2d[:, :, 0, :C]  
+    g_in_2d_1 = g_in_2d[:, :, 0, C:]
+    g_in_2d_2 = g_in_2d[:, :, 1, :C]
+    g_in_2d_3 = g_in_2d[:, :, 1, C:]
+    
+    for tile_b, tile_n, tile_c in hl.tile([B, N, C]):
+        
+        x_1d_0_chunk = x_A1[tile_b, tile_n, tile_c]
+        x_1d_1_chunk = x_A2[tile_b, tile_n, tile_c]
+        x_1d_2_chunk = x_B1[tile_b, tile_n, tile_c]
+        x_1d_3_chunk = x_B2[tile_b, tile_n, tile_c]
+        x_2d_0_chunk = x_2d_0[tile_b, tile_n, tile_c]
+        x_2d_1_chunk = x_2d_1[tile_b, tile_n, tile_c]
+        x_2d_2_chunk = x_2d_2[tile_b, tile_n, tile_c]
+        x_2d_3_chunk = x_2d_3[tile_b, tile_n, tile_c]
+    
+        g_1d_0_chunk = g_A1[tile_b, tile_n, tile_c]
+        g_1d_1_chunk = g_A2[tile_b, tile_n, tile_c]
+        g_1d_2_chunk = g_B1[tile_b, tile_n, tile_c]
+        g_1d_3_chunk = g_B2[tile_b, tile_n, tile_c]
+        g_2d_0_chunk = g_2d_0[tile_b, tile_n, tile_c]
+        g_2d_1_chunk = g_2d_1[tile_b, tile_n, tile_c]
+        g_2d_2_chunk = g_2d_2[tile_b, tile_n, tile_c]
+        g_2d_3_chunk = g_2d_3[tile_b, tile_n, tile_c]
+        
+
+        # inv FFT
+        x_1d_0_chunk, x_1d_1_chunk, x_1d_2_chunk, x_1d_3_chunk, x_2d_0_chunk, x_2d_1_chunk, x_2d_2_chunk, x_2d_3_chunk = isotypic_to_regular(x_1d_0_chunk, x_1d_1_chunk, x_1d_2_chunk, x_1d_3_chunk, x_2d_0_chunk, x_2d_1_chunk, x_2d_2_chunk, x_2d_3_chunk)
+        
+        # inv FFT (FFT tranposed)
+        g_1d_0_chunk, g_1d_1_chunk, g_1d_2_chunk, g_1d_3_chunk, g_2d_0_chunk, g_2d_1_chunk, g_2d_2_chunk, g_2d_3_chunk = regular_to_isotypic(g_1d_0_chunk, g_1d_1_chunk, g_1d_2_chunk, g_1d_3_chunk, g_2d_0_chunk, g_2d_1_chunk, g_2d_2_chunk, g_2d_3_chunk)
+        
+        
+        # gelu grid
+        
+        x_1d_0_chunk = gelu_grad(x_1d_0_chunk)
+        x_1d_1_chunk = gelu_grad(x_1d_1_chunk)
+        x_1d_2_chunk = gelu_grad(x_1d_2_chunk)
+        x_1d_3_chunk = gelu_grad(x_1d_3_chunk)
+        x_2d_0_chunk = gelu_grad(x_2d_0_chunk)
+        x_2d_1_chunk = gelu_grad(x_2d_1_chunk)
+        x_2d_2_chunk = gelu_grad(x_2d_2_chunk)
+        x_2d_3_chunk = gelu_grad(x_2d_3_chunk)
+        
+        # multiply according to chain rule
+        g_1d_0_chunk = g_1d_0_chunk * x_1d_0_chunk
+        g_1d_1_chunk = g_1d_1_chunk * x_1d_1_chunk
+        g_1d_2_chunk = g_1d_2_chunk * x_1d_2_chunk
+        g_1d_3_chunk = g_1d_3_chunk * x_1d_3_chunk
+        g_2d_0_chunk = g_2d_0_chunk * x_2d_0_chunk
+        g_2d_1_chunk = g_2d_1_chunk * x_2d_1_chunk
+        
+        # FFT (inv FFT tranposed)
+        g_1d_0_chunk, g_1d_1_chunk, g_1d_2_chunk, g_1d_3_chunk, g_2d_0_chunk, g_2d_1_chunk, g_2d_2_chunk, g_2d_3_chunk = regular_to_isotypic(g_1d_0_chunk, g_1d_1_chunk, g_1d_2_chunk, g_1d_3_chunk, g_2d_0_chunk, g_2d_1_chunk, g_2d_2_chunk, g_2d_3_chunk)
+        
+        g_in_A1[tile_b, tile_n, tile_c] = g_1d_0_chunk
+        g_in_A2[tile_b, tile_n, tile_c] = g_1d_1_chunk
+        g_in_B1[tile_b, tile_n, tile_c] = g_1d_2_chunk
+        g_in_B2[tile_b, tile_n, tile_c] = g_1d_3_chunk
+        g_in_2d_0[tile_b, tile_n, tile_c] = g_2d_0_chunk
+        g_in_2d_1[tile_b, tile_n, tile_c] = g_2d_1_chunk
+        g_in_2d_2[tile_b, tile_n, tile_c] = g_2d_2_chunk
+        g_in_2d_3[tile_b, tile_n, tile_c] = g_2d_3_chunk
+        
+    g_in_2d[:, :, 0, :C] = g_in_2d_0
+    g_in_2d[:, :, 0, C:] = g_in_2d_1
+    g_in_2d[:, :, 1, :C] = g_in_2d_2
+    g_in_2d[:, :, 1, C:] = g_in_2d_3
+
+    return g_in_A1, g_in_A2, g_in_B1, g_in_B2, g_in_2d
+
+class HelionGeluD8Function(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x_A1, x_A2, x_B1, x_B2, x_2d):
+        x_A1, x_A2, x_B1, x_B2, x_2d = (
+            x_A1.contiguous(), x_A2.contiguous(),
+            x_B1.contiguous(), x_B2.contiguous(),
+            x_2d.contiguous()
+        )
+        ctx.save_for_backward(x_A1, x_A2, x_B1, x_B2, x_2d)
+        return helion_d8_gelu_fwd(x_A1, x_A2, x_B1, x_B2, x_2d)
+    @staticmethod
+    def backward(ctx, g_A1, g_A2, g_B1, g_B2, g_2d):
+        x_A1, x_A2, x_B1, x_B2, x_2d = ctx.saved_tensors
+        return helion_d8_gelu_bwd(g_A1.contiguous(),
+                           g_A2.contiguous(),
+                           g_B1.contiguous(),
+                           g_B2.contiguous(),
+                           g_2d.contiguous(),
+                           x_A1.contiguous(),
+                           x_A2.contiguous(),
+                           x_B1.contiguous(),
+                           x_B2.contiguous(),
+                           x_2d.contiguous())
+
+class HelionGeluD8(torch.nn.Module):
+    def forward(self, xs):
+        return HelionGeluD8Function.apply(xs[0], xs[1], xs[2], xs[3], xs[4])
+
+
+
 def test_fwd():
     device = "cuda"
     # Create a sample tensor
@@ -677,6 +997,7 @@ def test_bwd():
 
     triton_gelu_d8 = TritonGeluD8()
     y_A1, y_A2, y_B1, y_B2, y_2d = triton_gelu_d8([x_1d[:, :, 0], x_1d[:, :, 1], x_1d[:, :, 2], x_1d[:, :, 3], x_2d])
+
     cat_all = torch.cat([
         y_A1.unsqueeze(2),
         y_A2.unsqueeze(2),
@@ -687,7 +1008,7 @@ def test_bwd():
     g = torch.randn_like(cat_all).detach()
     g_copy = g.clone()
 
-    cat_all.backward(g)
+    cat_all.backward(g, retain_graph=True)
     grad_cat_all = torch.cat([
         x_1d.grad,
         x_2d.grad.reshape([B, N, 2, 2, C]).transpose(2, 3).reshape([B, N, 4, C])
@@ -713,7 +1034,41 @@ def test_bwd():
     print("Gelu gradient all close:",
           torch.allclose(grad_cat_all, grad_stack_all, rtol=1e-5, atol=1e-5))
 
+    from triton.testing import do_bench
+    print(f"Fwd Time: {do_bench(lambda: triton_gelu_d8([x_1d[:, :, 0], x_1d[:, :, 1], x_1d[:, :, 2], x_1d[:, :, 3], x_2d]))} ms")
+    print(f"Bwd Time: {do_bench(lambda: cat_all.backward(g, retain_graph=True))} ms")
 
+    
+    ### Helion ###
+    
+    helion_gelu_d8 = HelionGeluD8()
+    y_A1_helion, y_A2_helion, y_B1_helion, y_B2_helion, y_2d_helion = helion_gelu_d8([x_1d[:, :, 0], x_1d[:, :, 1], x_1d[:, :, 2], x_1d[:, :, 3], x_2d])
+
+    cat_all_helion = torch.cat([
+        y_A1_helion.unsqueeze(2),
+        y_A2_helion.unsqueeze(2),
+        y_B1_helion.unsqueeze(2), 
+        y_B2_helion.unsqueeze(2),
+        y_2d_helion.reshape([B, N, 2, 2, C]).transpose(2, 3).reshape([B, N, 4, C])
+    ], dim=2)
+    
+    g_helion = torch.randn_like(cat_all_helion).detach()
+
+    cat_all_helion.backward(g_helion, retain_graph=True)
+    grad_cat_all_helion = torch.cat([
+        x_1d.grad,
+        x_2d.grad.reshape([B, N, 2, 2, C]).transpose(2, 3).reshape([B, N, 4, C])
+    ], dim=2)
+    
+    print("Helion Gelu output all close:",
+          torch.allclose(cat_all_helion, cat_all, rtol=1e-5, atol=1e-5))
+    print("Helion Gelu gradient all close:",
+          torch.allclose(grad_cat_all_helion, grad_stack_all, rtol=1e-5, atol=1e-5))
+    
+    print(f"Helion Fwd Time: {do_bench(lambda: helion_gelu_d8([x_1d[:, :, 0], x_1d[:, :, 1], x_1d[:, :, 2], x_1d[:, :, 3], x_2d]))} ms")
+    print(f"Helion Bwd Time: {do_bench(lambda: cat_all_helion.backward(g_helion, retain_graph=True))} ms")
+    
+    
 if __name__ == "__main__":
     # test_fwd()
     test_bwd()
