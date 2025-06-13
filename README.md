@@ -94,7 +94,7 @@ For segmentation evaluation we use the code from [capi](https://github.com/faceb
 
 ### Weights
 
-Download the weights from here to reproduce the evaluation metrics. The DINOv2 weights only include the teacher backbone.
+Download the weights from here to reproduce the evaluation metrics. The DINOv2 weights only include the teacher backbone. [HERE](https://drive.google.com/drive/folders/1c4dKQUHoloMuE0vF7QBR2C9pt6QzEi88?usp=sharing) is a link to a Google Drive that contains all files of interest.
 
 #### DeiT III
 <table style="margin: auto">
