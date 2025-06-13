@@ -1020,7 +1020,7 @@ def test_bwd():
     gelu_d8 = GeluD8()
     ys = gelu_d8(xs)
     stack_all = torch.stack(ys, dim=2)
-    stack_all.backward(g_copy)
+    stack_all.backward(g_copy, retain_graph=True)
     grad_stack_all = torch.stack([x.grad for x in xs], dim=2)
 
     # print(cat_all)
@@ -1035,8 +1035,12 @@ def test_bwd():
           torch.allclose(grad_cat_all, grad_stack_all, rtol=1e-5, atol=1e-5))
 
     from triton.testing import do_bench
-    print(f"Fwd Time: {do_bench(lambda: triton_gelu_d8([x_1d[:, :, 0], x_1d[:, :, 1], x_1d[:, :, 2], x_1d[:, :, 3], x_2d]))} ms")
-    print(f"Bwd Time: {do_bench(lambda: cat_all.backward(g, retain_graph=True))} ms")
+    
+    print(f"PyTorch Fwd Time: {do_bench(lambda: gelu_d8(xs))} ms")
+    print(f"PyTorch Bwd Time: {do_bench(lambda: stack_all.backward(g_copy, retain_graph=True))} ms")
+
+    print(f"Triton Fwd Time: {do_bench(lambda: triton_gelu_d8([x_1d[:, :, 0], x_1d[:, :, 1], x_1d[:, :, 2], x_1d[:, :, 3], x_2d]))} ms")
+    print(f"Triton Bwd Time: {do_bench(lambda: cat_all.backward(g, retain_graph=True))} ms")
 
     
     ### Helion ###
