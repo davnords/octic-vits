@@ -106,7 +106,7 @@ def submit_jobs(task_class, args, name: str):
         timeout_min=args.timeout,  # max is 60 * 72
         slurm_signal_delay_s=120,
         slurm_partition=args.partition,
-        slurm_mail_user="davnords@chalmers.se" if args.email else None,
+        slurm_mail_user="<youremail>" if args.email else None,
         slurm_mail_type="ALL" if args.email else None,
         **kwargs,
     )
