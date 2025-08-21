@@ -1,3 +1,3 @@
-IMAGENET_PATH = "/mimer/NOBACKUP/groups/snic2022-6-266/data/imagenet"
+IMAGENET_PATH = "./data/imagenet"
 EXTRA_PATH = "./extra"
-WANDB_ENTITY="georgs-team"
+WANDB_ENTITY="<your-team>"
