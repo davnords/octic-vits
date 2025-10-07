@@ -1,6 +1,6 @@
 # 
 <p align="center">
-  <h1 align="center">Stronger ViTs With Octic Equivariance</h1>
+  <h1 align="center">Octic Vision Transformers: Quicker ViTs Through Equivariance</h1>
   <p align="center">
     <a href="https://scholar.google.com/citations?user=-vJPE04AAAAJ">David Nordström</a>
     ·
