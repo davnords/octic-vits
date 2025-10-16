@@ -277,8 +277,8 @@ Code structure is inspired by [capi](https://github.com/facebookresearch/capi) a
 If you find this repository useful, please consider giving a star :star: and citation :octopus::
 
 ```bibtex
-@misc{nordström2025strongervitsocticequivariance,
-      title={Stronger ViTs With Octic Equivariance}, 
+@misc{nordström2025octicvisiontransformersquicker,
+      title={Octic Vision Transformers: Quicker ViTs Through Equivariance}, 
       author={David Nordström and Johan Edstedt and Fredrik Kahl and Georg Bökman},
       year={2025},
       eprint={2505.15441},
